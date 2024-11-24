@@ -1,87 +1,96 @@
-const express = require('express');
-const { Command } = require('commander');
-const http = require('http');
-const path = require('path');
-const fs = require('fs');
-
-const program = new Command();
-program
-  .requiredOption('-h, --host <host>', 'адреса сервера')
-  .requiredOption('-p, --port <port>', 'порт сервера')
-  .requiredOption('-c, --cache <path>', 'шлях до директорії кешу');
-
-program.parse(process.argv);
-const options = program.opts();
-
-const cachePath = path.resolve(options.cache);
-try {
-  fs.accessSync(cachePath);
-} catch (err) {
-  console.error(`Помилка: вказана директорія кешу недоступна - ${cachePath}`);
-  process.exit(1);
-}
+const { program } = require("commander");
+const http = require("http");
+const path = require("path");
+const express = require("express");
+const multer = require("multer");
 
 const app = express();
+const upload = multer();
 
+// Налаштування командного рядка
+program
+  .requiredOption("-h, --host <host>", "хост сервера")
+  .requiredOption("-p, --port <port>", "порт сервера")
+  .requiredOption("-c, --cache <path>", "шлях до кешу");
+
+program.parse(process.argv);
+
+const { host, port, cache } = program.opts();
+
+// Підключення middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const notes = {};
+// Головна сторінка
+app.get("/", (req, res) => {
+  res.send("Сервер працює");
+});
 
-app.get('/notes/:noteName', (req, res) => {
+// Нотатки
+let notes = {};
+
+// Отримання конкретної нотатки
+app.get("/notes/:noteName", (req, res) => {
   const noteName = req.params.noteName;
   if (notes[noteName]) {
-    return res.send(notes[noteName].text);
+    res.send(notes[noteName]);
   } else {
-    return res.status(404).send('Нотатка не знайдена');
+    res.status(404).send("Нотатка не знайдена");
   }
 });
 
-app.put('/notes/:noteName', (req, res) => {
+// Оновлення нотатки
+app.put("/notes/:noteName", (req, res) => {
   const noteName = req.params.noteName;
+  const text = req.body.text; // Оскільки використовується express.json
   if (notes[noteName]) {
-    notes[noteName].text = req.body.text;
-    return res.send('Нотатку оновлено');
+    notes[noteName] = text;
+    res.send("Нотатку оновлено");
   } else {
-    return res.status(404).send('Нотатка не знайдена');
+    res.status(404).send("Нотатку не знайдено");
   }
 });
 
-app.delete('/notes/:noteName', (req, res) => {
+// Видалення нотатки
+app.delete("/notes/:noteName", (req, res) => {
   const noteName = req.params.noteName;
   if (notes[noteName]) {
     delete notes[noteName];
-    return res.send('Нотатку видалено');
+    res.send("Нотатку видалено");
   } else {
-    return res.status(404).send('Нотатка не знайдена');
+    res.status(404).send("Нотатку не знайдено");
   }
 });
 
-app.get('/notes', (req, res) => {
-  const noteList = Object.keys(notes).map((noteName) => ({
+// Список усіх нотаток
+app.get("/notes", (req, res) => {
+  const notesList = Object.keys(notes).map((noteName) => ({
     name: noteName,
-    text: notes[noteName].text
+    text: notes[noteName],
   }));
-  return res.json(noteList);
+  res.json(notesList);
 });
 
-app.post('/write', (req, res) => {
-  const { note_name, note } = req.body;
-
-  if (notes[note_name]) {
-    return res.status(400).send('Нотатка з таким ім\'ям вже існує');
+// Додавання нової нотатки
+app.post("/write", upload.none(), (req, res) => {
+  const noteName = req.body.note_name;
+  const text = req.body.note;
+  if (notes[noteName]) {
+    res.status(400).send("Нотатка вже існує");
+  } else {
+    notes[noteName] = text;
+    res.status(201).send("Нотатку створено");
   }
-
-  notes[note_name] = { text: note };
-  return res.status(201).send('Нотатку створено');
 });
 
-app.get('/UploadForm.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'UploadForm.html'));
+// Завантаження HTML-форми
+app.get("/UploadForm.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "UploadForm.html"));
 });
 
+// Запуск сервера
 const server = http.createServer(app);
 
-server.listen(options.port, options.host, () => {
-  console.log(`Сервер запущено на http://${options.host}:${options.port}`);
+server.listen(port, host, () => {
+  console.log(`Сервер запущено: http://${host}:${port}`);
 });
